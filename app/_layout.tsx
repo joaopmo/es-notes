@@ -11,14 +11,13 @@ import {
   MD3LightTheme,
   adaptNavigationTheme,
   MD3Theme,
+  IconButton,
 } from "react-native-paper";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
-import "react-native-reanimated";
 import { useColorScheme } from "@/hooks/useColorScheme";
-import NavigationBar from "@/components/NavigationBar";
 
 const { LightTheme, DarkTheme } = adaptNavigationTheme({
   reactNavigationLight: NavigationDefaultTheme,
@@ -37,6 +36,8 @@ export default function RootLayout() {
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
 
+  let theme = colorScheme === "dark" ? CombinedDarkTheme : CombinedDefaultTheme;
+
   useEffect(() => {
     if (loaded) {
       SplashScreen.hideAsync();
@@ -48,18 +49,22 @@ export default function RootLayout() {
   }
 
   return (
-    <ThemeProvider
-      value={colorScheme === "dark" ? CombinedDarkTheme : CombinedDefaultTheme}
-    >
-      <PaperProvider>
+    <ThemeProvider value={theme}>
+      <PaperProvider theme={theme}>
         <Stack
+          initialRouteName="index"
           screenOptions={{
-            header: (props) => <NavigationBar {...props} />,
+            headerRight: () => (
+              <IconButton
+                icon="dots-vertical"
+                size={20}
+                onPress={() => console.log("Pressed")}
+              />
+            ),
           }}
-          initialRouteName="editor"
         >
+          <Stack.Screen name="index" />
           <Stack.Screen name="editor" />
-          <Stack.Screen name="folder" />
           <Stack.Screen name="+not-found" />
         </Stack>
       </PaperProvider>
