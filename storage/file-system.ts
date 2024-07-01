@@ -1,17 +1,43 @@
 import * as EFS from "expo-file-system";
 
+export type FileSystemDriver = {
+  documentDirectory: string | null;
+  EncodingType: typeof EFS.EncodingType;
+  getInfoAsync: (fileUri: string) => Promise<EFS.FileInfo>;
+  readDirectoryAsync: (fileUri: string) => Promise<string[]>;
+  deleteAsync: (fileUri: string, options: EFS.DeletingOptions) => Promise<void>;
+  makeDirectoryAsync: (
+    fileUri: string,
+    options: EFS.MakeDirectoryOptions
+  ) => Promise<void>;
+  readAsStringAsync: (
+    fileUri: string,
+    options: EFS.ReadingOptions
+  ) => Promise<string>;
+  writeAsStringAsync: (
+    fileUri: string,
+    content: string,
+    options: EFS.WritingOptions
+  ) => Promise<void>;
+};
+
 export type FileInfo = EFS.FileInfo & { name: string };
 
-type FileContent = FileInfo & { content: string };
+type FilePreview = FileInfo & { preview: string };
 
 type DirectoryInfo = {
   directories: FileInfo[];
   files: FileInfo[];
 };
 
-export type DirectoryContent = {
+type DirectoryContent = {
   directories: FileInfo[];
-  files: FileContent[];
+  files: FilePreview[];
+};
+
+export type FSState = {
+  directoryInfo: FileInfo;
+  directoryContent: DirectoryContent;
 };
 
 const BASE_DIRECTORY_INFO: FileInfo = {
@@ -26,58 +52,78 @@ const BASE_DIRECTORY_CONTENT: DirectoryContent = {
   directories: [],
 };
 
+interface ConstructorSettings {
+  driver?: FileSystemDriver;
+  previewSize?: number;
+}
+
 export default class FS {
-  static baseDirectoryInfo = BASE_DIRECTORY_INFO;
-  static baseDirectoryContent = BASE_DIRECTORY_CONTENT;
+  private _driver: FileSystemDriver;
+  private _initialized: boolean;
+  private _previewSize: number;
+  private _directoryInfo: FileInfo;
+  private _directoryContent: DirectoryContent;
 
-  private directoryInfo: FileInfo;
-  private directoryContent: DirectoryContent;
+  private _baseDirectoryInfo = BASE_DIRECTORY_INFO;
+  private _baseDirectoryContent = BASE_DIRECTORY_CONTENT;
 
-  private setDirectoryObservers: Array<(directory: FileInfo) => void>;
-  private readDirectoryContentObservers: Array<
-    (content: DirectoryContent) => void
-  >;
+  constructor(
+    settings: ConstructorSettings = { driver: EFS, previewSize: 100 }
+  ) {
+    this._driver = settings.driver ?? EFS;
+    this._initialized = false;
+    this._previewSize = settings.previewSize ?? 100;
 
-  constructor() {
-    this.setDirectoryObservers = [];
-    this.readDirectoryContentObservers = [];
-
-    this.directoryInfo = FS.baseDirectoryInfo;
-    this.directoryContent = FS.baseDirectoryContent;
+    this._directoryInfo = this._baseDirectoryInfo;
+    this._directoryContent = this._baseDirectoryContent;
   }
 
   /**
    * PRIVATE METHODS
    */
-  private async getInfoAsync(fileUri: string = ""): Promise<FileInfo> {
-    const fileInfo = await EFS.getInfoAsync(this.directoryInfo.uri + fileUri);
+  private async _getInfoAsync(fileUri: string): Promise<FileInfo> {
+    const fileInfo = await this._driver.getInfoAsync(fileUri);
 
-    return {
-      ...fileInfo,
-      name: fileInfo.uri.split("/").pop()!,
-    };
-  }
-
-  private async directoryExistsAsync(fileUri: string = ""): Promise<FileInfo> {
-    let fileInfo = await this.getInfoAsync(fileUri);
+    let name: string = "";
 
     if (!fileInfo.exists) {
-      await this.makeDirectoryAsync(fileUri);
-      fileInfo = await this.getInfoAsync(fileUri);
+      return { ...fileInfo, name };
+    }
+
+    if (fileInfo.isDirectory) {
+      fileInfo.uri += fileInfo.uri.endsWith("/") ? "" : "/";
+      name = fileInfo.uri.split("/").at(-2)!;
+    } else {
+      name = fileInfo.uri.split("/").pop()!;
+    }
+
+    return { ...fileInfo, name };
+  }
+
+  private async _directoryExistsAsync(fileName: string): Promise<FileInfo> {
+    const fileUri = this._directoryInfo.uri + fileName;
+
+    let fileInfo = await this._getInfoAsync(fileUri);
+
+    if (!fileInfo.exists) {
+      await this._driver.makeDirectoryAsync(fileUri, { intermediates: true });
+      fileInfo = await this._getInfoAsync(fileUri);
     }
 
     return fileInfo;
   }
 
-  private async readDirectoryAsync(): Promise<Array<string>> {
-    return EFS.readDirectoryAsync(this.directoryInfo.uri);
+  private async _readDirectoryAsync(): Promise<string[]> {
+    return this._driver.readDirectoryAsync(this._directoryInfo.uri);
   }
 
-  private async readDirectoryInfoAsync(): Promise<DirectoryInfo> {
-    const fileNames = await this.readDirectoryAsync();
+  private async _readDirectoryInfoAsync(): Promise<DirectoryInfo> {
+    const fileNames = await this._readDirectoryAsync();
 
     const fileInfo = await Promise.all(
-      fileNames.map((name) => this.getInfoAsync(name))
+      fileNames.map((name) =>
+        this._getInfoAsync(this._directoryInfo.uri + name)
+      )
     );
 
     return fileInfo.reduce<DirectoryInfo>(
@@ -94,121 +140,155 @@ export default class FS {
     );
   }
 
-  private notifySetDirectory() {
-    this.setDirectoryObservers.forEach((observer) =>
-      observer(this.directoryInfo)
+  private async _readDirectoryContentAsync(): Promise<DirectoryContent> {
+    const fileInfo = await this._readDirectoryInfoAsync();
+
+    const files = await Promise.all(
+      fileInfo.files.map(async (file) => {
+        const preview = await this.readContentAsync(file.name);
+
+        return {
+          ...file,
+          preview: preview.slice(0, this._previewSize),
+        };
+      })
     );
+
+    return {
+      files,
+      directories: fileInfo.directories,
+    };
   }
 
-  private notifyReadDirectoryContent() {
-    this.readDirectoryContentObservers.forEach((observer) =>
-      observer(this.directoryContent)
-    );
+  private async _removeOneAsync(fileName: string): Promise<void> {
+    const fileUri = this._directoryInfo.uri + fileName;
+
+    const fileInfo = await this._getInfoAsync(fileUri);
+
+    await this._driver.deleteAsync(fileUri, { idempotent: true });
+
+    const matchUri = (dir: FileInfo) => dir.uri === fileInfo.uri;
+
+    if (fileInfo.isDirectory) {
+      const index = this._directoryContent.directories.findIndex(matchUri);
+      this._directoryContent.directories.splice(index, 1);
+    } else {
+      const index = this._directoryContent.files.findIndex(matchUri);
+      this._directoryContent.files.splice(index, 1);
+    }
+  }
+
+  private _directory(): FSState {
+    return {
+      directoryInfo: this._directoryInfo,
+      directoryContent: this._directoryContent,
+    };
+  }
+
+  /**
+   * GETTERS
+   */
+  get baseDirectoryInfo() {
+    return this._baseDirectoryInfo;
+  }
+
+  get baseDirectoryContent() {
+    return this._baseDirectoryContent;
   }
 
   /**
    * PUBLIC METHODS
    */
-  async setDirectory(directory: string = ""): Promise<void> {
-    this.directoryInfo = await this.directoryExistsAsync(directory);
-
-    this.notifySetDirectory();
-  }
-
-  async readContentAsync(fileUri: string): Promise<string> {
-    return EFS.readAsStringAsync(this.directoryInfo.uri + fileUri, {
-      encoding: EFS.EncodingType.UTF8,
-    });
-  }
-
-  async makeDirectoryAsync(fileUri: string = ""): Promise<void> {
-    await EFS.makeDirectoryAsync(this.directoryInfo.uri + fileUri, {
-      intermediates: true,
-    });
-
-    const directoryInfo = await this.getInfoAsync(fileUri);
-
-    this.directoryContent.directories.push(directoryInfo);
-
-    this.notifyReadDirectoryContent();
-  }
-
-  async deleteAsync(fileUri: string = ""): Promise<void> {
-    const fileInfo = await this.getInfoAsync(fileUri);
-
-    await EFS.deleteAsync(this.directoryInfo.uri + fileUri, {
-      idempotent: true,
-    });
-
-    const matchUri = (dir: FileInfo) => dir.uri === fileInfo.uri;
-
-    if (fileInfo.isDirectory) {
-      const index = this.directoryContent.directories.findIndex(matchUri);
-      this.directoryContent.directories.splice(index, 1);
-    } else {
-      const index = this.directoryContent.files.findIndex(matchUri);
-      this.directoryContent.files.splice(index, 1);
+  async init(fileName: string): Promise<FSState> {
+    if (this._directoryInfo === this._baseDirectoryInfo) {
+      this._directoryInfo = await this._directoryExistsAsync(fileName);
+      this.baseDirectoryInfo.uri = this._directoryInfo.uri;
     }
 
-    this.notifyReadDirectoryContent();
+    this._directoryContent = await this._readDirectoryContentAsync();
+    this._initialized = true;
+
+    return this._directory();
   }
 
-  async writeContentAsync(fileUri: string, contents: string): Promise<void> {
-    await EFS.writeAsStringAsync(this.directoryInfo.uri + fileUri, contents, {
-      encoding: EFS.EncodingType.UTF8,
+  async setDirectory(fileUri: string): Promise<FSState> {
+    if (!this._initialized) {
+      return this._directory();
+    }
+
+    this._directoryInfo = await this._getInfoAsync(fileUri);
+    this._directoryContent = await this._readDirectoryContentAsync();
+
+    return this._directory();
+  }
+
+  async makeDirectoryAsync(fileName: string): Promise<FSState> {
+    if (!this._initialized) {
+      return this._directory();
+    }
+
+    const fileUri = this._directoryInfo.uri + fileName;
+
+    await this._driver.makeDirectoryAsync(fileUri, { intermediates: true });
+
+    const fileInfo = await this._getInfoAsync(fileUri);
+
+    this._directoryContent.directories.push(fileInfo);
+
+    return this._directory();
+  }
+
+  async writeContentAsync(fileName: string, content: string): Promise<FSState> {
+    if (!this._initialized) {
+      return this._directory();
+    }
+
+    const fileUri = this._directoryInfo.uri + fileName;
+
+    await this._driver.writeAsStringAsync(fileUri, content, {
+      encoding: this._driver.EncodingType.UTF8,
     });
 
-    const fileInfo = await this.getInfoAsync(fileUri);
-
-    const file = this.directoryContent.files.find(
-      (file) => file.uri === fileInfo.uri
+    const file = this._directoryContent.files.find(
+      (file) => file.uri === fileUri
     );
 
     if (file) {
-      file.content = contents;
+      file.preview = content.slice(0, this._previewSize);
     } else {
-      this.directoryContent.files.push({
+      const fileInfo = await this._getInfoAsync(fileUri);
+      this._directoryContent.files.push({
         ...fileInfo,
-        content: contents,
+        preview: content.slice(0, this._previewSize),
       });
     }
 
-    this.notifyReadDirectoryContent();
+    return this._directory();
   }
 
-  async readDirectoryContentAsync(): Promise<void> {
-    const fileInfo = await this.readDirectoryInfoAsync();
+  async removeAsync(fileNames: string | string[]): Promise<FSState> {
+    if (!this._initialized) {
+      return this._directory();
+    }
 
-    const files = await Promise.all(
-      fileInfo.files.map(async (file) => ({
-        ...file,
-        content: await this.readContentAsync(file.uri),
-      }))
-    );
+    const isArray = Array.isArray(fileNames);
 
-    this.directoryContent = {
-      files,
-      directories: fileInfo.directories,
-    };
+    if (isArray) {
+      await Promise.all(
+        fileNames.map((fileName) => this._removeOneAsync(fileName))
+      );
+    } else {
+      await this._removeOneAsync(fileNames);
+    }
 
-    this.notifyReadDirectoryContent();
+    return this._directory();
   }
 
-  onSetDirectory(observer: (directory: FileInfo) => void) {
-    this.setDirectoryObservers.push(observer);
+  async readContentAsync(fileName: string): Promise<string> {
+    const fileUri = this._directoryInfo.uri + fileName;
 
-    return () => {
-      const index = this.setDirectoryObservers.indexOf(observer);
-      this.setDirectoryObservers.splice(index, 1);
-    };
-  }
-
-  onReadDirectoryContent(observer: (content: DirectoryContent) => void) {
-    this.readDirectoryContentObservers.push(observer);
-
-    return () => {
-      const index = this.readDirectoryContentObservers.indexOf(observer);
-      this.readDirectoryContentObservers.splice(index, 1);
-    };
+    return this._driver.readAsStringAsync(fileUri, {
+      encoding: this._driver.EncodingType.UTF8,
+    });
   }
 }
