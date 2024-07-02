@@ -23,7 +23,7 @@ const initialFS = {
   methods: {} as FileSystemMethods,
 };
 
-const FileSystemContext = createContext(initialFS);
+export const FileSystemContext = createContext(initialFS);
 
 interface FileSystemProviderProps {
   children: React.ReactNode;

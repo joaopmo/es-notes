@@ -64,7 +64,7 @@ export default class FS {
   private _directoryInfo: FileInfo;
   private _directoryContent: DirectoryContent;
 
-  private _baseDirectoryInfo = BASE_DIRECTORY_INFO;
+  private _baseDirectoryInfo = { ...BASE_DIRECTORY_INFO };
   private _baseDirectoryContent = BASE_DIRECTORY_CONTENT;
 
   constructor(
@@ -178,6 +178,16 @@ export default class FS {
     }
   }
 
+  private async _makeOneDirectoryAsync(fileName: string): Promise<void> {
+    const fileUri = this._directoryInfo.uri + fileName;
+
+    await this._driver.makeDirectoryAsync(fileUri, { intermediates: true });
+
+    const fileInfo = await this._getInfoAsync(fileUri);
+
+    this._directoryContent.directories.push(fileInfo);
+  }
+
   private _directory(): FSState {
     return {
       directoryInfo: this._directoryInfo,
@@ -202,7 +212,8 @@ export default class FS {
   async init(fileName: string): Promise<FSState> {
     if (this._directoryInfo === this._baseDirectoryInfo) {
       this._directoryInfo = await this._directoryExistsAsync(fileName);
-      this.baseDirectoryInfo.uri = this._directoryInfo.uri;
+
+      this._baseDirectoryInfo = { ...this._directoryInfo };
     }
 
     this._directoryContent = await this._readDirectoryContentAsync();
@@ -222,18 +233,20 @@ export default class FS {
     return this._directory();
   }
 
-  async makeDirectoryAsync(fileName: string): Promise<FSState> {
+  async makeDirectoryAsync(fileNames: string | string[]): Promise<FSState> {
     if (!this._initialized) {
       return this._directory();
     }
 
-    const fileUri = this._directoryInfo.uri + fileName;
+    const isArray = Array.isArray(fileNames);
 
-    await this._driver.makeDirectoryAsync(fileUri, { intermediates: true });
-
-    const fileInfo = await this._getInfoAsync(fileUri);
-
-    this._directoryContent.directories.push(fileInfo);
+    if (isArray) {
+      await Promise.all(
+        fileNames.map((fileName) => this._makeOneDirectoryAsync(fileName))
+      );
+    } else {
+      await this._makeOneDirectoryAsync(fileNames);
+    }
 
     return this._directory();
   }
