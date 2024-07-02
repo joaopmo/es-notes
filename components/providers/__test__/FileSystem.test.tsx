@@ -1,6 +1,6 @@
 import React from "react";
-import { render } from "@testing-library/react-native";
-import { Text } from "react-native";
+import { fireEvent, render } from "@testing-library/react-native";
+import { Text, Button } from "react-native";
 import { FileSystemProvider, FileSystemContext } from "../FileSystem";
 
 const EncodingType = {
@@ -47,7 +47,7 @@ test("FileSystemProvider inicializa a classe FS com o diretório md", async () =
   expect(text).toEqual(["Received: ", documentDirectory + initDir]);
 });
 
-test("FileSystemProvider possui diretórios", async () => {
+test("FileSystemProvider possui sub-diretórios", async () => {
   const screen = render(
     <FileSystemProvider>
       <FileSystemContext.Consumer>
@@ -79,4 +79,58 @@ test("FileSystemProvider não possui arquivos", async () => {
   const text = (await screen.findByText(/^Received:/)).children;
 
   expect(text).toEqual(["Received: ", "0"]);
+});
+
+test("FileSystemProvider cria um arquivo e atualiza o estado", async () => {
+  const screen = render(
+    <FileSystemProvider>
+      <FileSystemContext.Consumer>
+        {(value) => (
+          <Button
+            title={`Received: ${value.state.directoryContent.files.length}`}
+            onPress={() => {
+              value.methods.writeContent("file1/", "content");
+            }}
+          />
+        )}
+      </FileSystemContext.Consumer>
+    </FileSystemProvider>
+  );
+
+  let text = await screen.findByText(/^Received:/);
+
+  expect(text.children).toEqual(["Received: 0"]);
+
+  fireEvent.press(text);
+
+  text = await screen.findByText(/^Received:/);
+
+  expect(text.children).toEqual(["Received: 1"]);
+});
+
+test("FileSystemProvider deleta um diretório e atualiza o estado", async () => {
+  const screen = render(
+    <FileSystemProvider>
+      <FileSystemContext.Consumer>
+        {(value) => (
+          <Button
+            title={`Received: ${value.state.directoryContent.directories.length}`}
+            onPress={() => {
+              value.methods.remove("dir1/");
+            }}
+          />
+        )}
+      </FileSystemContext.Consumer>
+    </FileSystemProvider>
+  );
+
+  let text = await screen.findByText(/^Received:/);
+
+  expect(text.children).toEqual(["Received: 2"]);
+
+  fireEvent.press(text);
+
+  text = await screen.findByText(/^Received:/);
+
+  expect(text.children).toEqual(["Received: 1"]);
 });
