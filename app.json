@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "es-notes",
-    "slug": "es-notes",
+    "name": "notes",
+    "slug": "notes",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "es-notes",
+    "scheme": "notes",
     "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/images/splash.png",
@@ -22,11 +22,6 @@
       },
       "package": "com.anonymous.esnotes"
     },
-    "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
-    },
     "plugins": [
       "expo-router",
       "expo-font"
@@ -39,7 +34,7 @@
         "origin": false
       },
       "eas": {
-        "projectId": "86e0dad5-8044-4323-b7a5-4e520321ab32"
+        "projectId": "7bc4d750-e959-4de5-a482-9f95b9eb5004"
       }
     }
   }

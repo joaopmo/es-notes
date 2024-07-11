@@ -1,4 +1,4 @@
-name: es-notes-test-workflow
+name: notes-test-workflow
 on: [push]
 jobs:
   run-jest-tests:

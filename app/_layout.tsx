@@ -1,5 +1,4 @@
 import React from "react";
-
 import {
   DarkTheme as NavigationDarkTheme,
   DefaultTheme as NavigationDefaultTheme,
@@ -17,10 +16,10 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
-import { useColorScheme } from "@/hooks/useColorScheme";
 import { FileSystemProvider } from "@/components/providers/FileSystem";
 import { DialogProvider } from "@/components/providers/Dialog";
 import { PaperLightColors, PaperDarkColors } from "@/styles/colors";
+import { useColorScheme } from "react-native";
 
 const { LightTheme, DarkTheme } = adaptNavigationTheme({
   reactNavigationLight: NavigationDefaultTheme,

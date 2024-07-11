@@ -25,7 +25,7 @@ export function IndexHeaderRight() {
 
     if (fileName) {
       fileName += fileName.endsWith(".md") ? "" : ".md";
-      writeContent(encodeURI(fileName), "");
+      writeContent(fileName, "");
     }
   };
 
@@ -41,7 +41,7 @@ export function IndexHeaderRight() {
     });
 
     if (fileName) {
-      makeDirectory(encodeURI(fileName));
+      makeDirectory(fileName);
     }
   };
 
@@ -53,12 +53,12 @@ export function IndexHeaderRight() {
     >
       <Menu.Item
         leadingIcon="file-plus-outline"
-        onPress={() => newFile()}
+        onPress={async () => await newFile()}
         title="Novo Arquivo"
       />
       <Menu.Item
         leadingIcon="folder-plus-outline"
-        onPress={() => newDirectory()}
+        onPress={async () => await newDirectory()}
         title="Novo Diretório"
       />
     </Menu>

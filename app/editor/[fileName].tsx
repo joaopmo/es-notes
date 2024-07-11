@@ -13,7 +13,7 @@ export default function Editor() {
   const [initialized, setInitialized] = useState(false);
   const [text, setText] = useState("");
   const { fileName } = useLocalSearchParams();
-  const { readContent, writeContent } = useFileSystemMethods();
+  const { readContentAsync, writeContent } = useFileSystemMethods();
 
   const saveContent = useCallback(() => {
     setHasChanged(false);
@@ -33,13 +33,13 @@ export default function Editor() {
   }, [fileName, hasChanged, navigation, saveContent]);
 
   useEffect(() => {
-    readContent(fileName as string)
+    readContentAsync(fileName as string)
       .then((content) => {
         setText(content);
         setInitialized(true);
       })
       .catch(console.error);
-  }, [fileName, readContent]);
+  }, [fileName, readContentAsync]);
 
   return (
     <View style={{ flex: 1 }}>

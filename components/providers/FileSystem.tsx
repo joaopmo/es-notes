@@ -9,7 +9,7 @@ type FileSystemMethods = {
   remove: (fileNames: string | string[]) => void;
   setDirectory: (fileUri: string) => void;
   makeDirectory: (fileName: string) => void;
-  readContent: (fileName: string) => Promise<string>;
+  readContentAsync: (fileName: string) => Promise<string>;
   writeContent: (fileName: string, content: string) => void;
 };
 
@@ -45,7 +45,7 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
     }));
   }, []);
 
-  const readContent = useCallback((fileName: string) => {
+  const readContentAsync = useCallback((fileName: string) => {
     return fs.readContentAsync(fileName);
   }, []);
 
@@ -95,7 +95,7 @@ export function FileSystemProvider({ children }: FileSystemProviderProps) {
         methods: {
           setDirectory,
           remove,
-          readContent,
+          readContentAsync,
           writeContent,
           makeDirectory,
         },
